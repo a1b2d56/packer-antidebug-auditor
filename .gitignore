@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+venv/
+.venv/
+*.egg-info/
+.DS_Store
+.vscode/
+.idea/
+
+# Generated test PE samples (see scripts/make_test_sample.sh) -- never
+# commit compiled binaries, even trivial/benign ones, to a security repo.
+samples/
