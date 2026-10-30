@@ -1,0 +1,25 @@
+{
+  "feature_names": [
+    "section_count",
+    "max_entropy",
+    "mean_entropy",
+    "high_entropy_sections",
+    "rwx_sections_count",
+    "size_delta_flags_count",
+    "packer_section_flags_count",
+    "overlay_present",
+    "overlay_entropy",
+    "anti_debug_import_count",
+    "sparse_iat_flag",
+    "suspicious_strings_count",
+    "tls_callbacks_present",
+    "opcode_checks_count",
+    "direct_syscall_count",
+    "header_anomaly_count",
+    "risk_score"
+  ],
+  "n_features": 17,
+  "model_class": "RandomForestClassifier",
+  "sklearn_version": "1.9.0",
+  "written_at": "2026-10-26T15:19:56+00:00"
+}

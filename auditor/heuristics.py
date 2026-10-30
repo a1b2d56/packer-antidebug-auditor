@@ -11,20 +11,34 @@ from auditor.entropy import PACKED_ENTROPY_THRESHOLD, shannon_entropy
 IMAGE_SCN_MEM_EXECUTE = 0x20000000
 IMAGE_SCN_MEM_WRITE = 0x80000000
 
-# Common section names left behind by packers and protectors.
+# Common section names and prefixes left behind by packers and protectors.
 KNOWN_PACKER_SECTION_NAMES = {
     "upx0", "upx1", "upx2",
     ".aspack", ".adata",
     "petite",
     "pec1", "pec2", ".pec",
-    ".themida", ".taggant", "themida",
+    ".themida", ".taggant", "themida", ".wl",
     ".vmp0", ".vmp1", ".vmp2",
     ".mpress1", ".mpress2",
     ".nsp0", ".nsp1", ".nsp2",
     ".enigma1", ".enigma2",
     "fsg!", "mew", ".obsid",
     "pebundle", ".pack",
+    ".cr0", ".cr1", ".confuser",
+    ".armid", ".armad",
+    "boxed", "bxapp",
+    ".ndata",
+    "molebox",
+    ".spack", ".pecompact",
+    "yoda",
 }
+
+KNOWN_PACKER_PREFIXES = (
+    "upx", ".vmp", ".nsp", ".enigma", "pec", ".cr", ".mpress", ".aspack",
+)
+
+IMAGE_FILE_RELOCS_STRIPPED = 0x0001
+IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE = 0x0040
 
 
 def size_delta_flags(sections: list[dict]) -> list[dict]:
@@ -57,16 +71,68 @@ def size_delta_flags(sections: list[dict]) -> list[dict]:
 
 
 def section_name_flags(sections: list[dict]) -> list[dict]:
-    """Flag section names matching known packer signatures."""
+    """Flag section names matching known packer signatures or prefix families."""
     flagged = []
     for section in sections:
         clean_name = section["name"].lower().strip()
+        matched = False
         if clean_name in KNOWN_PACKER_SECTION_NAMES:
+            matched = True
+        elif any(clean_name.startswith(pfx) for pfx in KNOWN_PACKER_PREFIXES if len(clean_name) > len(pfx)):
+            matched = True
+
+        if matched:
             flagged.append({
                 **section,
                 "reason": f"section name '{section['name']}' matches known packer signature",
             })
     return flagged
+
+
+def pe_header_anomaly_flags(pe) -> list[dict]:
+    """Flag PE header anti-forensics and compilation anomalies (timestomping, ASLR conflicts, obfuscated sections)."""
+    flags = []
+
+    # 1. Compilation TimeDateStamp Anomalies (Timestomping)
+    file_header = getattr(pe, "FILE_HEADER", None)
+    if file_header is not None:
+        timestamp = getattr(file_header, "TimeDateStamp", None)
+        if timestamp is not None:
+            if timestamp == 0:
+                flags.append({"kind": "timestamp", "reason": "TimeDateStamp is 0 (stripped or deliberately wiped compilation timestamp)"})
+            elif 0 < timestamp < 946684800:  # Prior to 2000-01-01
+                flags.append({"kind": "timestamp", "reason": f"TimeDateStamp is pre-2000 ({timestamp}) (possible timestomping)"})
+            elif timestamp > 2082758400:  # Far in the future (beyond 2035)
+                flags.append({"kind": "timestamp", "reason": f"TimeDateStamp is set far in future ({timestamp}) (timestomping indicator)"})
+
+        # 2. Dynamic Base (ASLR) with Relocations Stripped Conflict
+        opt_header = getattr(pe, "OPTIONAL_HEADER", None)
+        if opt_header is not None:
+            dll_chars = getattr(opt_header, "DllCharacteristics", 0)
+            file_chars = getattr(file_header, "Characteristics", 0)
+            has_dynamic_base = bool(dll_chars & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE)
+            relocs_stripped = bool(file_chars & IMAGE_FILE_RELOCS_STRIPPED)
+            if has_dynamic_base and relocs_stripped:
+                flags.append({
+                    "kind": "aslr_conflict",
+                    "reason": "DYNAMIC_BASE (ASLR) enabled but RELOCS_STRIPPED flag is set (corrupted/custom loader state)"
+                })
+
+    # 3. Non-printable or obfuscated section names
+    for section in getattr(pe, "sections", []):
+        raw_name = getattr(section, "Name", b"")
+        clean_raw = raw_name.rstrip(b"\x00")
+        if clean_raw:
+            # Check for non-printable characters outside standard ASCII range (0x20 - 0x7E)
+            if any(b < 0x20 or b > 0x7E for b in clean_raw):
+                flags.append({
+                    "kind": "section_name",
+                    "reason": f"non-printable/obfuscated bytes in section name ({repr(clean_raw)})"
+                })
+        else:
+            flags.append({"kind": "section_name", "reason": "empty/blank section name detected"})
+
+    return flags
 
 
 def section_count_flag(pe) -> dict | None:

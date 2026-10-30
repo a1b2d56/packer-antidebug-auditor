@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "packer-antidebug-auditor"
-version = "0.2.0"
-description = "Static PE packer and anti-debug auditor for Windows binaries"
+version = "0.3.0"
+description = "Static PE/APK packer, anti-debug and evasion auditor (Final Project Review)"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [
-    { name = "Malware Analysis Lab" }
+    { name = "Ananmay Jha (23BCI0163)" },
+    { name = "Aaditya Agre (23BCI0146)" },
 ]
 dependencies = [
     "pefile>=2023.2.7",
@@ -20,11 +21,30 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.0",
+    "httpx>=0.27.0",  # FastAPI TestClient (tests_server/)
+]
+ml = [
+    "scikit-learn>=1.3.0",
+    "joblib>=1.3.0",
+    "numpy>=1.24.0",
+]
+web = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "python-multipart>=0.0.9",
+    "aiofiles>=24.1.0",
+    "aiosqlite>=0.20.0",
+    "yara-python>=4.3.0",
 ]
 
 [project.scripts]
 packer-audit = "cli:main"
+packer-web = "server.main:start"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "tests_server"]
 python_files = ["test_*.py"]
+filterwarnings = [
+    # joblib's unpickler trips a NumPy 2.5 deprecation when loading the shipped model
+    "ignore:Setting the shape on a NumPy array has been deprecated:DeprecationWarning",
+]

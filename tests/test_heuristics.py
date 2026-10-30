@@ -6,6 +6,7 @@ from auditor.heuristics import (
     IMAGE_SCN_MEM_WRITE,
     entry_point_flags,
     overlay_flags,
+    pe_header_anomaly_flags,
     rwx_section_flags,
     section_count_flag,
     section_name_flags,
@@ -98,6 +99,50 @@ class TestHeuristics(unittest.TestCase):
         )
         flags = entry_point_flags(mock_pe)
         self.assertTrue(any("writable section" in f["reason"] for f in flags))
+
+    def test_section_name_flags_matches_prefixes(self):
+        sections = [
+            {"name": ".vmp3"},
+            {"name": "upx99"},
+            {"name": ".enigma_custom"},
+            {"name": ".rsrc"},
+        ]
+        flags = section_name_flags(sections)
+        names = [f["name"] for f in flags]
+        self.assertIn(".vmp3", names)
+        self.assertIn("upx99", names)
+        self.assertIn(".enigma_custom", names)
+        self.assertNotIn(".rsrc", names)
+
+    def test_pe_header_anomaly_flags_timestomping(self):
+        # TimeDateStamp = 0
+        mock_pe = SimpleNamespace(
+            FILE_HEADER=SimpleNamespace(TimeDateStamp=0, Characteristics=0),
+            OPTIONAL_HEADER=SimpleNamespace(DllCharacteristics=0),
+            sections=[],
+        )
+        flags = pe_header_anomaly_flags(mock_pe)
+        self.assertTrue(any("TimeDateStamp is 0" in f["reason"] for f in flags))
+
+    def test_pe_header_anomaly_flags_aslr_conflict(self):
+        # DYNAMIC_BASE enabled + RELOCS_STRIPPED set
+        mock_pe = SimpleNamespace(
+            FILE_HEADER=SimpleNamespace(TimeDateStamp=1600000000, Characteristics=0x0001),
+            OPTIONAL_HEADER=SimpleNamespace(DllCharacteristics=0x0040),
+            sections=[],
+        )
+        flags = pe_header_anomaly_flags(mock_pe)
+        self.assertTrue(any("DYNAMIC_BASE" in f["reason"] for f in flags))
+
+    def test_pe_header_anomaly_flags_obfuscated_sections(self):
+        sec1 = SimpleNamespace(Name=b"\x01\x02\x03\x00")
+        mock_pe = SimpleNamespace(
+            FILE_HEADER=SimpleNamespace(TimeDateStamp=1600000000, Characteristics=0),
+            OPTIONAL_HEADER=SimpleNamespace(DllCharacteristics=0),
+            sections=[sec1],
+        )
+        flags = pe_header_anomaly_flags(mock_pe)
+        self.assertTrue(any("non-printable" in f["reason"] for f in flags))
 
 
 if __name__ == "__main__":

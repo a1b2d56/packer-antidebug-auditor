@@ -3,7 +3,8 @@ import tempfile
 import unittest
 from types import SimpleNamespace
 
-from cli import audit_pe_file, extract_pe_metadata, find_target_files
+from auditor.report import CSV_FEATURE_COLUMNS, extract_feature_dict
+from cli import audit_pe_file, audit_pe_worker, extract_pe_metadata, find_target_files
 
 
 class TestCLI(unittest.TestCase):
@@ -57,6 +58,57 @@ class TestCLI(unittest.TestCase):
         try:
             with contextlib.redirect_stderr(io.StringIO()):
                 res = audit_pe_file(tmp_name)
+            self.assertIsNone(res)
+        finally:
+            os.remove(tmp_name)
+
+    def test_extract_feature_dict_generates_all_columns(self):
+        sample_report = {
+            "file_path": "sample.exe",
+            "metadata": {"arch": "x86_64", "section_count": 5},
+            "sections": [
+                {"name": ".text", "entropy": 6.2, "likely_packed": False},
+                {"name": ".data", "entropy": 7.5, "likely_packed": True},
+            ],
+            "heuristics": {
+                "rwx_sections": [{"name": ".data"}],
+                "size_deltas": [],
+                "packer_section_names": [],
+                "overlay": {"size": 1024, "entropy": 7.8},
+                "iat_density": [],
+                "header_anomalies": [{"reason": "TimeDateStamp is 0"}],
+            },
+            "anti_analysis": {
+                "imports": [{"api": "IsDebuggerPresent"}],
+                "strings": [{"string": "ghidra"}],
+                "tls_callbacks": [],
+                "opcodes": [],
+                "direct_syscalls": [{"reason": "Direct syscall"}],
+            },
+            "verdict": {"score": 8, "verdict": "HIGH"},
+        }
+        features = extract_feature_dict(sample_report)
+        for col in CSV_FEATURE_COLUMNS:
+            self.assertIn(col, features)
+
+        self.assertEqual(features["high_entropy_sections"], 1)
+        self.assertEqual(features["rwx_sections_count"], 1)
+        self.assertEqual(features["direct_syscall_count"], 1)
+        self.assertEqual(features["header_anomaly_count"], 1)
+        self.assertEqual(features["risk_score"], 8)
+        self.assertEqual(features["verdict"], "HIGH")
+
+    def test_audit_pe_worker_handles_invalid_file(self):
+        import contextlib
+        import io
+
+        with tempfile.NamedTemporaryFile(suffix=".exe", delete=False) as f:
+            f.write(b"garbage content")
+            tmp_name = f.name
+
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                res = audit_pe_worker(tmp_name)
             self.assertIsNone(res)
         finally:
             os.remove(tmp_name)

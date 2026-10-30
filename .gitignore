@@ -8,6 +8,16 @@ venv/
 .vscode/
 .idea/
 
-# Generated test PE samples (see scripts/make_test_sample.sh) -- never
-# commit compiled binaries, even trivial/benign ones, to a security repo.
+# Generated test PE samples (never commit compiled binaries)
 samples/
+
+# Runtime data & local quarantined uploads
+history.sqlite3
+quarantine/
+decompiled/
+tools/
+*.log
+
+# Web artifacts
+web/dist/
+web/node_modules/
